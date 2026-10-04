@@ -1,0 +1,362 @@
+#!/usr/bin/env python3
+"""
+Build and verify the Copernicus procedural texture network for the Control Brutalist Chiseled Stone.
+Location: /obj/COP_BrutalistStone in Houdini 22.0.368.
+Created: 4 October 2026.
+"""
+
+import sys
+import os
+import json
+import subprocess
+
+def run_hom(code):
+    cmd = ["python3", "/Users/zenray/.claude/Memory1/Houdini/MCP/zrhoudini.py", "hom", code, "live"]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        return {"ok": False, "error": res.stderr}
+    try:
+        return json.loads(res.stdout)
+    except Exception as e:
+        return {"ok": False, "raw": res.stdout, "json_err": str(e)}
+
+build_network_code = '''
+import hou
+import os
+
+net = hou.node('/obj').node('COP_BrutalistStone')
+if net:
+    net.destroy()
+
+net = hou.node('/obj').createNode('copnet', 'COP_BrutalistStone')
+net.parm('setres').set(1)
+net.parm('res1').set(2048)
+net.parm('res2').set(2048)
+
+def node(kind, name, inputs=(), **parms):
+    n = net.node(name) or net.createNode(kind, name)
+    for i, src in enumerate(inputs):
+        if src is not None:
+            n.setInput(i, src[0] if isinstance(src, tuple) else src, src[1] if isinstance(src, tuple) else 0)
+    for k, v in parms.items():
+        if n.parm(k):
+            n.parm(k).set(v)
+    return n
+
+SM_FUNC = """
+float sm(float a; float b; float x) {
+    return a <= b ? smooth(a, b, x) : 1.0 - smooth(b, a, x);
+}
+"""
+
+# 1. Macro Voronoi Cleavage Facets (Large bold brutalist rock planes)
+w_macro = node('wrangle', 'A1_cleavage_voronoi_macro')
+w_macro.parm('vexsnippet').set(SM_FUNC + """
+int N = 5;
+float u = frac(@P.x * 0.5 + 0.5);
+float v = frac(@P.y * 0.5 + 0.5);
+float gu = u * float(N);
+float gv = v * float(N);
+int cu = int(floor(gu));
+int cv = int(floor(gv));
+
+float min_d = 10.0;
+float min_d2 = 10.0;
+vector best_center = set(0, 0, 0);
+vector best_r = set(0, 0, 0);
+
+for (int dx = -1; dx <= 1; dx++) {
+    for (int dy = -1; dy <= 1; dy++) {
+        int nx = (cu + dx + N) % N;
+        int ny = (cv + dy + N) % N;
+        vector r = rand(set(float(nx) * 19.31, float(ny) * 37.19, 107.5));
+        float cx = float(cu + dx) + 0.10 + r.x * 0.80;
+        float cy = float(cv + dy) + 0.10 + r.y * 0.80;
+        float d = distance(set(gu, gv, 0), set(cx, cy, 0));
+        if (d < min_d) {
+            min_d2 = min_d;
+            min_d = d;
+            best_center = set(cx, cy, 0);
+            best_r = r;
+        } else if (d < min_d2) {
+            min_d2 = d;
+        }
+    }
+}
+
+vector2 slope = (set(best_r.x, best_r.y) - 0.5) * 2.2;
+float h_offset = (best_r.z - 0.5) * 0.45;
+float facet = 0.5 + h_offset + (gu - best_center.x) * slope.x * 0.14 + (gv - best_center.y) * slope.y * 0.14;
+float edge_val = clamp((min_d2 - min_d) * 2.0, 0.0, 1.0);
+
+p@C = set(facet, edge_val, best_r.z, 1.0);
+""")
+
+# 2. Meso Voronoi Cleavage Facets (Secondary fractures)
+w_meso = node('wrangle', 'A2_cleavage_voronoi_meso')
+w_meso.parm('vexsnippet').set(SM_FUNC + """
+int N = 11;
+float u = frac(@P.x * 0.5 + 0.5);
+float v = frac(@P.y * 0.5 + 0.5);
+float gu = u * float(N);
+float gv = v * float(N);
+int cu = int(floor(gu));
+int cv = int(floor(gv));
+
+float min_d = 10.0;
+float min_d2 = 10.0;
+vector best_center = set(0, 0, 0);
+vector best_r = set(0, 0, 0);
+
+for (int dx = -1; dx <= 1; dx++) {
+    for (int dy = -1; dy <= 1; dy++) {
+        int nx = (cu + dx + N) % N;
+        int ny = (cv + dy + N) % N;
+        vector r = rand(set(float(nx) * 43.17, float(ny) * 71.29, 219.1));
+        float cx = float(cu + dx) + 0.15 + r.x * 0.70;
+        float cy = float(cv + dy) + 0.15 + r.y * 0.70;
+        float d = distance(set(gu, gv, 0), set(cx, cy, 0));
+        if (d < min_d) {
+            min_d2 = min_d;
+            min_d = d;
+            best_center = set(cx, cy, 0);
+            best_r = r;
+        } else if (d < min_d2) {
+            min_d2 = d;
+        }
+    }
+}
+
+vector2 slope = (set(best_r.x, best_r.y) - 0.5) * 1.8;
+float h_offset = (best_r.z - 0.5) * 0.22;
+float facet = 0.5 + h_offset + (gu - best_center.x) * slope.x * 0.08 + (gv - best_center.y) * slope.y * 0.08;
+float edge_val = clamp((min_d2 - min_d) * 2.8, 0.0, 1.0);
+
+p@C = set(facet, edge_val, best_r.z, 1.0);
+""")
+
+b_cleavage = node('blend', 'A3_blend_cleavage_macro_meso', [w_macro, w_meso], mode='overlay', mask=0.28)
+
+# 3. Directional Strata (Fine Slate Bedding Lines)
+w_strata = node('wrangle', 'B1_strata_directional_slate')
+w_strata.parm('vexsnippet').set(SM_FUNC + """
+float ang = radians(20.0);
+float ca = cos(ang);
+float sa = sin(ang);
+float u = frac(@P.x * 0.5 + 0.5);
+float v = frac(@P.y * 0.5 + 0.5);
+float rx = u * ca + v * sa;
+float ry = -u * sa + v * ca;
+
+float w = noise(set(rx * 8.0, ry * 14.0, 77.3)) * 0.025;
+float coord = (ry + w) * 52.0;
+
+float phase = frac(coord);
+float step_profile = sm(0.0, 0.12, phase) * (1.0 - sm(0.85, 1.0, phase));
+float micro_lam = sin(coord * 3.0) * 0.012;
+
+float strata = (step_profile * 0.032 + micro_lam);
+p@C = set(strata, strata, strata, 1.0);
+""")
+
+b_strata = node('blend', 'B2_add_strata', [b_cleavage, w_strata], mode='add', mask=0.90)
+
+# 4. Edge Chipping and Rock Fractures
+w_edge_chip = node('wrangle', 'C1_edge_chipping', [b_strata])
+w_edge_chip.parm('vexsnippet').set(SM_FUNC + """
+vector c_macro = @C;
+float edge_mask = 1.0 - clamp(c_macro.y, 0.0, 1.0);
+
+float chip_n1 = anoise(set(@P.x * 40.0, @P.y * 40.0, 83.1));
+float chip_n2 = anoise(set(@P.x * 110.0, @P.y * 110.0, 114.7));
+
+float chip = sm(0.50, 0.88, chip_n1 * 0.7 + chip_n2 * 0.3) * edge_mask * 0.14;
+float erosion = (1.0 - edge_mask) * (chip_n2 - 0.5) * 0.018;
+
+p@C = set(chip + erosion, chip, edge_mask, 1.0);
+""")
+
+b_chips = node('blend', 'C2_subtract_edge_chips', [b_strata, w_edge_chip], mode='subtract', mask=0.85)
+
+# 5. Highpass Micro-Pores and Mineral Grain
+w_micro_noise = node('wrangle', 'D1_micro_mineral_noise')
+w_micro_noise.parm('vexsnippet').set("""
+float n1 = noise(set(@P.x * 140.0, @P.y * 140.0, 13.5));
+float n2 = noise(set(@P.x * 320.0, @P.y * 320.0, 47.9));
+float grit = n1 * 0.6 + n2 * 0.4;
+p@C = set(grit, grit, grit, 1.0);
+""")
+
+blur_micro = node('blur', 'D2_blur_micro', [w_micro_noise], size=0.004)
+highpass_micro = node('blend', 'D3_highpass_subtract', [w_micro_noise, blur_micro], mode='subtract')
+
+w_pores = node('wrangle', 'D4_pores_pitting', [highpass_micro])
+w_pores.parm('vexsnippet').set(SM_FUNC + """
+float hp = @C.x;
+float pits = sm(0.08, 0.22, hp) * 0.035;
+p@C = set(hp * 0.03 - pits, hp, pits, 1.0);
+""")
+
+b_add_micro = node('blend', 'D5_add_micro_to_height', [b_chips, w_pores], mode='add', mask=1.0)
+
+# 6. Final Height Output
+mono_height = node('channelextract', 'E1_extract_height_mono', [b_add_micro], channel=0)
+final_height = node('null', 'FINAL_1_HEIGHT', [mono_height])
+
+# 7. Normal Map (Tangent space, DirectX inverted green)
+norm = node('heighttonormal', 'F1_height_to_normal', [final_height], normaltype='offset', scale=0.10)
+flip_n = node('wrangle', 'F2_normal_directx_flip', [norm])
+flip_n.parm('vexsnippet').set("v@C = set(@C.x, 1.0 - @C.y, @C.z);\\n")
+final_normal = node('null', 'FINAL_2_NORMAL', [flip_n])
+
+# 8. Coupled Wetness and Roughness
+# Unified node computing cavity pooling, runoff water streaks, and coupled roughness
+w_wet = node('wrangle', 'G1_wetness_coupled', [final_height])
+w_wet.parm('vexsnippet').set(SM_FUNC + """
+float h = @C.x;
+
+// Cavity: deeper crevices and clefts
+float cavity = 1.0 - sm(0.25, 0.55, h);
+
+// Vertical water runoff streaks down monolith face:
+float u = frac(@P.x * 0.5 + 0.5);
+float flow_warp = noise(set(@P.x * 10.0, @P.y * 2.5, 14.2)) * 0.07;
+float flow_col = frac((u + flow_warp) * 14.0);
+float stream = 1.0 - sm(0.02, 0.14, abs(flow_col - 0.5));
+float drip = noise(set(@P.x * 24.0, @P.y * 4.5, 88.5));
+float runoff = stream * sm(0.28, 0.68, drip);
+
+float wetness = clamp(cavity * 0.65 + runoff * 0.70, 0.0, 1.0);
+
+// Dry stone baseline: matte 0.82 with subtle micro-facet variance
+float micro_r = (noise(set(@P.x * 90.0, @P.y * 90.0, 92.4)) - 0.5) * 0.05;
+float r_dry = clamp(0.82 + micro_r, 0.77, 0.88);
+
+// Wet stone: slick specular water film (0.12)
+float r_wet = 0.12;
+
+float r_final = lerp(r_dry, r_wet, wetness);
+
+// Output: Channel 0 = Roughness, Channel 1 = Wetness mask, Channel 2 = Height
+p@C = set(r_final, wetness, h, 1.0);
+""")
+
+mono_rough = node('channelextract', 'G2_extract_roughness_mono', [w_wet], channel=0)
+final_roughness = node('null', 'FINAL_4_ROUGHNESS', [mono_rough])
+
+# 9. BaseColor (Dark Brutalist Charcoal Slate with linear albedo conversion)
+w_basecolor = node('wrangle', 'H1_basecolor_charcoal_slate', [w_wet])
+w_basecolor.parm('vexsnippet').set(SM_FUNC + """
+vector srgb2lin(vector c) {
+    vector lin;
+    lin.x = (c.x <= 0.04045) ? c.x / 12.92 : pow((c.x + 0.055) / 1.055, 2.4);
+    lin.y = (c.y <= 0.04045) ? c.y / 12.92 : pow((c.y + 0.055) / 1.055, 2.4);
+    lin.z = (c.z <= 0.04045) ? c.z / 12.92 : pow((c.z + 0.055) / 1.055, 2.4);
+    return lin;
+}
+
+float r = @C.x;
+float wetness = @C.y;
+float h = @C.z;
+
+// Rich brutalist charcoal slate palette in sRGB:
+vector c_base = set(0.24, 0.25, 0.27);
+vector c_cool = set(0.18, 0.21, 0.26);
+vector c_strata = set(0.34, 0.36, 0.38);
+vector c_dust = set(0.48, 0.49, 0.51);
+vector c_wet = set(0.065, 0.072, 0.085);
+
+float n_tint = noise(set(@P.x * 12.0, @P.y * 12.0, 31.8));
+vector c_dry = lerp(c_base, c_cool, n_tint * 0.7);
+
+float edge_highlight = sm(0.65, 0.90, h) * 0.45;
+c_dry = lerp(c_dry, c_dust, edge_highlight);
+
+float flecks = sm(0.82, 0.96, anoise(set(@P.x * 75.0, @P.y * 75.0, 61.2)));
+c_dry = lerp(c_dry, c_strata, flecks * 0.5);
+
+vector c_final_srgb = lerp(c_dry, c_wet, wetness * 0.92);
+vector c_final_lin = srgb2lin(c_final_srgb);
+
+p@C = set(c_final_lin.x, c_final_lin.y, c_final_lin.z, 1.0);
+""")
+
+final_basecolor = node('null', 'FINAL_3_BASECOLOR', [w_basecolor])
+
+# 10. Ambient Occlusion
+ao = node('heighttoambientocclusion', 'I1_height_to_ao', [final_height], heightscale=0.18, viewradius=0.07)
+mono_ao = node('channelextract', 'I2_extract_ao_mono', [ao], channel=0)
+final_ao = node('null', 'FINAL_5_AO', [mono_ao])
+
+# 11. Network Layout and Grouping
+net.layoutChildren()
+
+finals = [
+    ('FINAL_1_HEIGHT', final_height),
+    ('FINAL_2_NORMAL', final_normal),
+    ('FINAL_3_BASECOLOR', final_basecolor),
+    ('FINAL_4_ROUGHNESS', final_roughness),
+    ('FINAL_5_AO', final_ao)
+]
+
+x0 = min(c.position().x() for c in net.children()) - 8.0
+fbox = net.createNetworkBox('FINAL_MAPS_BOX')
+fbox.setComment('FINAL: Brutalist Chiseled Stone PBR Maps')
+fbox.setColor(hou.Color((0.95, 0.85, 0.25)))
+for i, (nm, fn) in enumerate(finals):
+    fn.setPosition(hou.Vector2(x0, -i * 1.6))
+    fn.setColor(hou.Color((0.95, 0.85, 0.25)))
+    fbox.addItem(fn)
+fbox.fitAroundContents()
+
+# 12. Export ROPs and Cooking
+out_dir = '/Users/zenray/.claude/tmp/tmp-control-resonant-hub-assets/textures'
+os.makedirs(out_dir, exist_ok=True)
+
+rop_configs = [
+    ('ROP_export_height', final_height, 'BrutalistStone_Height.png'),
+    ('ROP_export_normal', final_normal, 'BrutalistStone_Normal.png'),
+    ('ROP_export_roughness', final_roughness, 'BrutalistStone_Roughness.png'),
+    ('ROP_export_basecolor', final_basecolor, 'BrutalistStone_BaseColor.png'),
+    ('ROP_export_ao', final_ao, 'BrutalistStone_AO.png')
+]
+
+cook_results = {}
+for rop_name, src_node, filename in rop_configs:
+    out_path = os.path.join(out_dir, filename)
+    r = node('rop_image', rop_name, [src_node])
+    r.parm('copoutput').set(out_path)
+    r.parm('colorconversion').set('raw')
+    r.setPosition(src_node.position() + hou.Vector2(3.5, 0.0))
+    fbox.addItem(r)
+    
+    r.parm('execute').pressButton()
+    exists = os.path.exists(out_path)
+    sz = os.path.getsize(out_path) if exists else 0
+    cook_results[filename] = {
+        'exists': exists,
+        'size_bytes': sz,
+        'errors': [str(e) for e in r.errors()]
+    }
+
+fbox.fitAroundContents()
+
+result = {
+    'ok': True,
+    'node_count': len(net.children()),
+    'cooks': cook_results
+}
+'''
+
+def main():
+    print("Executing build_copernicus_stone_material.py in Houdini session...")
+    res = run_hom(build_network_code)
+    print("Result:")
+    print(json.dumps(res, indent=2))
+    if not res.get("ok"):
+        print("Failed to build Copernicus stone material network.")
+        sys.exit(1)
+    print("Copernicus stone material successfully built and cooked.")
+
+if __name__ == "__main__":
+    main()

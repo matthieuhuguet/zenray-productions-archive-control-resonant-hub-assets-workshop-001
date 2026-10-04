@@ -1,13 +1,12 @@
 """
 Procedural modeling of the Control Brutalist Fountain asset.
 Builds the procedural SOP network with:
-- Outer chiseled stone basin
+- Outer chiseled stone basin (solid manifold with cavity and beveled stone edges)
 - 3 tiered monolithic pillars with hollow top reservoirs
-- Pour notch and animated water cascade
-- Animated basin water with impact ripples
-- UV unwrapping and Texel density normalization
+- Pour notch on Pillar 3 and animated cascading water sheet
+- Animated basin water with impact ripples and surface agitation
+- High quality UV unwrapping and Texel density normalization
 - Material classification (M_Control_BrutalistStone_01, M_Control_FountainWater_01) and wetness mask
-- Pure geometry (zero baked Cd in final UVs/geo per Components1.md doctrine)
 """
 import hou
 import os
@@ -22,7 +21,6 @@ def build_fountain():
         
     fountain_geo = obj.createNode('geo', 'Control_Brutalist_Fountain')
     
-    # Delete default file node inside
     for child in fountain_geo.children():
         child.destroy()
         
@@ -30,7 +28,7 @@ def build_fountain():
     null_parms = fountain_geo.createNode('null', 'CONTROLS')
     ptg = null_parms.parmTemplateGroup()
     
-    # Add folder for Basin
+    # Basin Folder
     f_basin = hou.FolderParmTemplate('basin_folder', 'Basin')
     f_basin.addParmTemplate(hou.FloatParmTemplate('basin_width', 'Basin Width', 1, default_value=(2.1,), min=1.0, max=4.0))
     f_basin.addParmTemplate(hou.FloatParmTemplate('basin_length', 'Basin Length', 1, default_value=(2.1,), min=1.0, max=4.0))
@@ -39,7 +37,7 @@ def build_fountain():
     f_basin.addParmTemplate(hou.FloatParmTemplate('cavity_depth', 'Cavity Depth', 1, default_value=(0.26,), min=0.1, max=0.6))
     ptg.append(f_basin)
     
-    # Add folder for Pillars
+    # Pillars Folder
     f_pillars = hou.FolderParmTemplate('pillars_folder', 'Pillars')
     f_pillars.addParmTemplate(hou.FloatParmTemplate('pillar_p1_height', 'Pillar 1 Height (Tall Back)', 1, default_value=(1.18,), min=0.8, max=2.5))
     f_pillars.addParmTemplate(hou.FloatParmTemplate('pillar_p2_height', 'Pillar 2 Height (Med Right)', 1, default_value=(0.96,), min=0.6, max=2.0))
@@ -48,14 +46,14 @@ def build_fountain():
     f_pillars.addParmTemplate(hou.FloatParmTemplate('pillar_wall_thick', 'Pillar Wall Thickness', 1, default_value=(0.075,), min=0.03, max=0.15))
     ptg.append(f_pillars)
     
-    # Add folder for Chisel / Stone Details
+    # Chisel Stone Folder
     f_chisel = hou.FolderParmTemplate('chisel_folder', 'Stone Chisel')
-    f_chisel.addParmTemplate(hou.FloatParmTemplate('chisel_roughness', 'Chisel Amplitude', 1, default_value=(0.024,), min=0.0, max=0.08))
-    f_chisel.addParmTemplate(hou.FloatParmTemplate('chisel_freq', 'Chisel Frequency', 1, default_value=(12.0,), min=1.0, max=40.0))
-    f_chisel.addParmTemplate(hou.FloatParmTemplate('edge_bevel', 'Edge Bevel Width', 1, default_value=(0.024,), min=0.005, max=0.1))
+    f_chisel.addParmTemplate(hou.FloatParmTemplate('chisel_roughness', 'Chisel Amplitude', 1, default_value=(0.016,), min=0.0, max=0.06))
+    f_chisel.addParmTemplate(hou.FloatParmTemplate('chisel_freq', 'Chisel Frequency', 1, default_value=(14.0,), min=1.0, max=40.0))
+    f_chisel.addParmTemplate(hou.FloatParmTemplate('edge_bevel', 'Edge Bevel Width', 1, default_value=(0.026,), min=0.005, max=0.08))
     ptg.append(f_chisel)
     
-    # Add folder for Water Animation
+    # Water Animation Folder
     f_water = hou.FolderParmTemplate('water_folder', 'Water Flow & Ripples')
     f_water.addParmTemplate(hou.FloatParmTemplate('water_speed', 'Flow Speed', 1, default_value=(3.5,), min=0.1, max=10.0))
     f_water.addParmTemplate(hou.FloatParmTemplate('ripple_freq', 'Ripple Frequency', 1, default_value=(28.0,), min=5.0, max=80.0))
@@ -70,11 +68,6 @@ def build_fountain():
     box_outer.parm('sizey').setExpression('ch("../CONTROLS/basin_height")')
     box_outer.parm('sizez').setExpression('ch("../CONTROLS/basin_length")')
     box_outer.parm('ty').setExpression('ch("../CONTROLS/basin_height") * 0.5')
-    # Extra subdivisions for organic stone deformation
-    box_outer.parm('dodivs').set(1)
-    box_outer.parm('divsx').set(8)
-    box_outer.parm('divsy').set(6)
-    box_outer.parm('divsz').set(8)
     
     # Inner cavity cutter
     box_inner = fountain_geo.createNode('box', 'box_basin_inner')
@@ -83,37 +76,42 @@ def build_fountain():
     box_inner.parm('sizez').setExpression('ch("../CONTROLS/basin_length") - ch("../CONTROLS/rim_thickness") * 2.0')
     box_inner.parm('ty').setExpression('ch("../CONTROLS/basin_height")')
     
-    # Boolean subtract cavity from outer basin
     bool_basin = fountain_geo.createNode('boolean::2.0', 'bool_basin')
     bool_basin.parm('booleanop').set('subtract')
     bool_basin.setInput(0, box_outer)
     bool_basin.setInput(1, box_inner)
     
-    # Bevel basin edges
     bevel_basin = fountain_geo.createNode('polybevel::3.0', 'bevel_basin')
     bevel_basin.setInput(0, bool_basin)
-    bevel_basin.parm('offset').setExpression('ch("../CONTROLS/edge_bevel") * 1.5')
-    bevel_basin.parm('divisions').set(2)
+    bevel_basin.parm('offset').setExpression('ch("../CONTROLS/edge_bevel")')
+    bevel_basin.parm('divisions').set(1)
     
-    # Chisel noise on basin (brutalist rock cleavage)
+    subd_basin = fountain_geo.createNode('subdivide', 'subd_basin')
+    subd_basin.setInput(0, bevel_basin)
+    subd_basin.parm('iterations').set(1)
+    subd_basin.parm('algorithm').set(1) # Linear (keeps sharp brutalist silhouette)
+    
+    normal_basin_pre = fountain_geo.createNode('normal', 'normal_basin_pre')
+    normal_basin_pre.setInput(0, subd_basin)
+    normal_basin_pre.parm('type').set(0) # Point normals
+    
     wrangle_chisel_basin = fountain_geo.createNode('attribwrangle', 'wrangle_chisel_basin')
-    wrangle_chisel_basin.setInput(0, bevel_basin)
+    wrangle_chisel_basin.setInput(0, normal_basin_pre)
     wrangle_chisel_basin.parm('snippet').set('''
     float amp = chf("../CONTROLS/chisel_roughness");
     float freq = chf("../CONTROLS/chisel_freq");
     
-    // Large rock faceting
-    vector p_noise = @P * freq * 0.35;
-    vector n1 = vector(anoise(p_noise));
+    // Brutalist rock cleavage: stepped planar facets
+    float v_noise = anoise(@P * freq);
+    float cleavage = (floor(v_noise * 5.0) / 5.0 - 0.5) * amp;
     
-    // Medium cleavage planes
-    vector n2 = vector(anoise(@P * freq));
+    // Fine chiseled rock grain
+    float micro = (anoise(@P * freq * 2.5) - 0.5) * amp * 0.4;
     
-    // Chisel displacement along normal
-    float disp = (n1.x * 0.6 + n2.x * 0.4) * amp;
+    float disp = cleavage + micro;
     
-    // Keep bottom flat on floor
-    if (@P.y > 0.01) {
+    // Keep bottom base flat on ground
+    if (@P.y > 0.02) {
         @P += @N * disp;
     }
     
@@ -129,12 +127,7 @@ def build_fountain():
         box_p_out.parm('tx').setExpression(pos_x_expr)
         box_p_out.parm('ty').setExpression(f'({height_expr}) * 0.5')
         box_p_out.parm('tz').setExpression(pos_z_expr)
-        box_p_out.parm('dodivs').set(1)
-        box_p_out.parm('divsx').set(4)
-        box_p_out.parm('divsy').set(12)
-        box_p_out.parm('divsz').set(4)
         
-        # Inner hollow cavity cutter
         box_p_in = fountain_geo.createNode('box', f'box_{name}_in')
         box_p_in.parm('sizex').setExpression('ch("../CONTROLS/pillar_size") - ch("../CONTROLS/pillar_wall_thick") * 2.0')
         box_p_in.parm('sizey').set(0.35)
@@ -150,7 +143,6 @@ def build_fountain():
         
         last_node = bool_p
         
-        # Pour notch on Pillar 3 (front lip)
         if has_notch:
             box_notch = fountain_geo.createNode('box', f'box_{name}_notch')
             box_notch.parm('sizex').set(0.065)
@@ -168,23 +160,32 @@ def build_fountain():
             
         bevel_p = fountain_geo.createNode('polybevel::3.0', f'bevel_{name}')
         bevel_p.setInput(0, last_node)
-        bevel_p.parm('offset').setExpression('ch("../CONTROLS/edge_bevel")')
-        bevel_p.parm('divisions').set(2)
+        bevel_p.parm('offset').setExpression('ch("../CONTROLS/edge_bevel") * 0.75')
+        bevel_p.parm('divisions').set(1)
+        
+        subd_p = fountain_geo.createNode('subdivide', f'subd_{name}')
+        subd_p.setInput(0, bevel_p)
+        subd_p.parm('iterations').set(1)
+        subd_p.parm('algorithm').set(1) # Linear
+        
+        normal_p_pre = fountain_geo.createNode('normal', f'normal_{name}_pre')
+        normal_p_pre.setInput(0, subd_p)
+        normal_p_pre.parm('type').set(0)
         
         wrangle_chisel_p = fountain_geo.createNode('attribwrangle', f'wrangle_chisel_{name}')
-        wrangle_chisel_p.setInput(0, bevel_p)
+        wrangle_chisel_p.setInput(0, normal_p_pre)
         wrangle_chisel_p.parm('snippet').set(f'''
         float amp = chf("../CONTROLS/chisel_roughness");
         float freq = chf("../CONTROLS/chisel_freq");
         
-        vector p_noise = @P * freq * 0.4;
-        vector n1 = vector(anoise(p_noise));
-        vector n2 = vector(anoise(@P * freq * 1.5));
+        // Planar chiseled stone cleavage facets
+        float v_noise = anoise(@P * freq * 0.8);
+        float cleavage = (floor(v_noise * 4.0) / 4.0 - 0.5) * amp;
         
-        // Vertical cleavage lines (strata)
-        float strata = sin(@P.y * 35.0) * 0.003;
+        // Horizontal strata sedimentary lines
+        float strata = sin(@P.y * 32.0) * amp * 0.25;
         
-        float disp = (n1.x * 0.6 + n2.x * 0.4) * amp + strata;
+        float disp = cleavage + strata;
         
         if (@P.y > 0.02) {{
             @P += @N * disp;
@@ -196,48 +197,36 @@ def build_fountain():
         
         return wrangle_chisel_p
         
-    # Pillar 1 (Tallest, Back-Center):
     p1 = make_pillar_node('pillar_tall_back', 1, 'ch("../CONTROLS/pillar_p1_height")', '-0.08', '-0.16', False)
-    
-    # Pillar 2 (Medium, Front-Right):
     p2 = make_pillar_node('pillar_med_right', 2, 'ch("../CONTROLS/pillar_p2_height")', '0.28', '-0.02', False)
-    
-    # Pillar 3 (Lowest, Front-Left):
     p3 = make_pillar_node('pillar_low_front', 3, 'ch("../CONTROLS/pillar_p3_height")', '-0.16', '0.24', True)
     
-    # Merge all stone geometry
     merge_stone = fountain_geo.createNode('merge', 'merge_stone_blocks')
     merge_stone.setInput(0, wrangle_chisel_basin)
     merge_stone.setInput(1, p1)
     merge_stone.setInput(2, p2)
     merge_stone.setInput(3, p3)
     
-    # Normal computation for stone
     normal_stone = fountain_geo.createNode('normal', 'normal_stone')
     normal_stone.setInput(0, merge_stone)
-    normal_stone.parm('type').set(0) # Vertices
+    normal_stone.parm('type').set(1) # Vertex normals for crisp stone shading
     
-    # Material and classification attributes for stone
     wrangle_mat_stone = fountain_geo.createNode('attribwrangle', 'wrangle_mat_stone')
     wrangle_mat_stone.setInput(0, normal_stone)
     wrangle_mat_stone.parm('snippet').set('''
     s@material_tag = "M_Control_BrutalistStone_01";
     s@unreal_material = "M_Control_BrutalistStone_01";
     
-    // Compute wetness mask:
-    // Wet where water runs down the front face of Pillar 3 (x ~ -0.16, z > 0.24, y < 0.74)
-    // and inside the lower basin (y < 0.24 and inside cavity)
     float is_basin_wet = (@P.y < 0.24 && abs(@P.x) < 0.85 && abs(@P.z) < 0.85) ? 1.0 : 0.0;
-    
     float dx = abs(@P.x - (-0.16));
     float dz = @P.z - 0.24;
     float is_waterfall_wet = (dx < 0.16 && dz > 0.18 && @P.y < 0.74) ? 1.0 : 0.0;
     
     f@wetness = clamp(is_basin_wet * 0.95 + is_waterfall_wet * 1.0, 0.0, 1.0);
+    @Cd = lerp(set(0.12, 0.13, 0.14), set(0.04, 0.04, 0.05), f@wetness);
     ''')
     
     # --- 4. WATER MODELING & ANIMATION ---
-    # A. Top pool 1 (Tall)
     grid_p1 = fountain_geo.createNode('grid', 'water_pool_p1')
     grid_p1.parm('sizex').setExpression('ch("../CONTROLS/pillar_size") - ch("../CONTROLS/pillar_wall_thick") * 2.0')
     grid_p1.parm('sizey').setExpression('ch("../CONTROLS/pillar_size") - ch("../CONTROLS/pillar_wall_thick") * 2.0')
@@ -247,7 +236,6 @@ def build_fountain():
     grid_p1.parm('ty').setExpression('ch("../CONTROLS/pillar_p1_height") - 0.04')
     grid_p1.parm('tz').set(-0.16)
     
-    # B. Top pool 2 (Medium)
     grid_p2 = fountain_geo.createNode('grid', 'water_pool_p2')
     grid_p2.parm('sizex').setExpression('ch("../CONTROLS/pillar_size") - ch("../CONTROLS/pillar_wall_thick") * 2.0')
     grid_p2.parm('sizey').setExpression('ch("../CONTROLS/pillar_size") - ch("../CONTROLS/pillar_wall_thick") * 2.0')
@@ -257,7 +245,6 @@ def build_fountain():
     grid_p2.parm('ty').setExpression('ch("../CONTROLS/pillar_p2_height") - 0.04')
     grid_p2.parm('tz').set(-0.02)
     
-    # C. Top pool 3 (Lowest)
     grid_p3 = fountain_geo.createNode('grid', 'water_pool_p3')
     grid_p3.parm('sizex').setExpression('ch("../CONTROLS/pillar_size") - ch("../CONTROLS/pillar_wall_thick") * 2.0')
     grid_p3.parm('sizey').setExpression('ch("../CONTROLS/pillar_size") - ch("../CONTROLS/pillar_wall_thick") * 2.0')
@@ -267,7 +254,6 @@ def build_fountain():
     grid_p3.parm('ty').setExpression('ch("../CONTROLS/pillar_p3_height") - 0.035')
     grid_p3.parm('tz').set(0.24)
     
-    # D. Basin Main Water Plane
     grid_basin = fountain_geo.createNode('grid', 'water_pool_basin')
     grid_basin.parm('sizex').setExpression('ch("../CONTROLS/basin_width") - ch("../CONTROLS/rim_thickness") * 2.0')
     grid_basin.parm('sizey').setExpression('ch("../CONTROLS/basin_length") - ch("../CONTROLS/rim_thickness") * 2.0')
@@ -275,7 +261,6 @@ def build_fountain():
     grid_basin.parm('cols').set(64)
     grid_basin.parm('ty').set(0.18)
     
-    # E. Waterfall Sheet from Pillar 3 Notch down to Basin Water
     curve_wf = fountain_geo.createNode('grid', 'waterfall_sheet')
     curve_wf.parm('sizex').set(0.09)
     curve_wf.parm('sizey').setExpression('ch("../CONTROLS/pillar_p3_height") - 0.18')
@@ -317,6 +302,7 @@ def build_fountain():
     s@material_tag = "M_Control_FountainWater_01";
     s@unreal_material = "M_Control_FountainWater_01";
     f@wetness = 1.0;
+    @Cd = set(0.18, 0.28, 0.35);
     ''')
     
     wrangle_anim_wf = fountain_geo.createNode('attribwrangle', 'wrangle_anim_waterfall')
@@ -335,6 +321,7 @@ def build_fountain():
     s@material_tag = "M_Control_FountainWater_01";
     s@unreal_material = "M_Control_FountainWater_01";
     f@wetness = 1.0;
+    @Cd = set(0.24, 0.38, 0.48);
     ''')
     
     merge_water = fountain_geo.createNode('merge', 'merge_all_water')
@@ -343,9 +330,9 @@ def build_fountain():
     
     normal_water = fountain_geo.createNode('normal', 'normal_water')
     normal_water.setInput(0, merge_water)
-    normal_water.parm('type').set(0)
+    normal_water.parm('type').set(1)
     
-    # --- 5. ASSET COMBINATION, UV UNWRAP, AND TEXEL DENSITY ---
+    # --- 5. ASSET MERGE & UV GENERATION ---
     merge_all = fountain_geo.createNode('merge', 'merge_asset_complete')
     merge_all.setInput(0, wrangle_mat_stone)
     merge_all.setInput(1, normal_water)
