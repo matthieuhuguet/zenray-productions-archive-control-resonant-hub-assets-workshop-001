@@ -71,9 +71,10 @@ def build_fountain():
     box_outer.parm('sizez').setExpression('ch("../CONTROLS/basin_length")')
     box_outer.parm('ty').setExpression('ch("../CONTROLS/basin_height") * 0.5')
     # Extra subdivisions for organic stone deformation
-    box_outer.parm('divratex').set(8)
-    box_outer.parm('divratey').set(6)
-    box_outer.parm('divratez').set(8)
+    box_outer.parm('dodivs').set(1)
+    box_outer.parm('divsx').set(8)
+    box_outer.parm('divsy').set(6)
+    box_outer.parm('divsz').set(8)
     
     # Inner cavity cutter
     box_inner = fountain_geo.createNode('box', 'box_basin_inner')
@@ -128,9 +129,10 @@ def build_fountain():
         box_p_out.parm('tx').setExpression(pos_x_expr)
         box_p_out.parm('ty').setExpression(f'({height_expr}) * 0.5')
         box_p_out.parm('tz').setExpression(pos_z_expr)
-        box_p_out.parm('divratex').set(4)
-        box_p_out.parm('divratey').set(12)
-        box_p_out.parm('divratez').set(4)
+        box_p_out.parm('dodivs').set(1)
+        box_p_out.parm('divsx').set(4)
+        box_p_out.parm('divsy').set(12)
+        box_p_out.parm('divsz').set(4)
         
         # Inner hollow cavity cutter
         box_p_in = fountain_geo.createNode('box', f'box_{name}_in')
@@ -189,7 +191,7 @@ def build_fountain():
         }}
         
         s@piece = "{name}";
-        int@pillar_idx = {p_idx};
+        i@pillar_idx = {p_idx};
         ''')
         
         return wrangle_chisel_p
@@ -231,7 +233,7 @@ def build_fountain():
     float dz = @P.z - 0.24;
     float is_waterfall_wet = (dx < 0.16 && dz > 0.18 && @P.y < 0.74) ? 1.0 : 0.0;
     
-    @f@wetness = clamp(is_basin_wet * 0.95 + is_waterfall_wet * 1.0, 0.0, 1.0);
+    f@wetness = clamp(is_basin_wet * 0.95 + is_waterfall_wet * 1.0, 0.0, 1.0);
     ''')
     
     # --- 4. WATER MODELING & ANIMATION ---
@@ -356,8 +358,7 @@ def build_fountain():
     
     uv_layout = fountain_geo.createNode('uvlayout::3.0', 'uv_layout')
     uv_layout.setInput(0, uv_flatten)
-    uv_layout.parm('packtarget').set(0)
-    uv_layout.parm('padding').set(0.01)
+    uv_layout.parm('padding').set(4)
     
     out_node = fountain_geo.createNode('null', 'OUT_FOUNTAIN_ASSET')
     out_node.setInput(0, uv_layout)

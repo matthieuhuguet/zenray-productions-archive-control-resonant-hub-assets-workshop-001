@@ -1,0 +1,232 @@
+# Reference Asset Manifest: Control Resonant Hub Environment (4 October 2026)
+
+## 1. Overview and Workspace Context
+
+This document establishes the geometric breakdown, metric dimensions, modular components, lighting parameters, and Houdini procedural modeling specifications for the four primary environmental assets discovered within the Control Resonant Hub.
+
+Reference workspace:
+* Location: /Users/zenray/.claude/tmp/tmp-control-resonant-hub-assets/ref/
+* Target pipeline: Houdini 20.5 / 22.0 SOP procedural generators, Copernicus PBR texturing, Unreal Engine 5 Nanite and Lumen integration.
+* Human scale reference: Jesse Faden (P6 outfit), height standardized to 1.75 m.
+
+## 2. Reference Image Catalog
+
+The reference folder contains raw screenshots, hero crops, and viewport diagnostic captures:
+
+* `01_fountain_angle1_raw.png` (800x700, Fountain): Angle 1 raw crop showing basin cavity, water level, and three tiered pillars.
+* `fountain_ref_angle1_hero.png` (800x700, Fountain): Angle 1 hero reference for master color, contrast, and basin stone chiseled facets.
+* `01_fountain_angle2_test.png` (950x850, Fountain): Angle 2 test crop showing player interaction prompt [F] and background steps.
+* `fountain_ref_angle2_hero.png` (900x800, Fountain): Angle 2 hero crop showing water cascade notch, pool reflections, and pillar bevels.
+* `02_monolith_fissure_crop.png` (900x1500, Glowing Monolith): Hero vertical crop showing full 4.4 m height, central zigzag fissure, spall debris, and blinding light core.
+* `hub_monolith_fissure_ref.png` (860x1460, Glowing Monolith): Alternate framing focusing on light leak beam projected across the floor and internal fracture facets.
+* `03_whale_rock_crop.png` (2000x1100, Whale Rock Wall): Hero wide crop showing 7 meter megalithic slate slab, dry brush chalk whale painting, interaction eye node, and painter stool.
+* `hub_whale_rock_wall_ref.png` (1920x1080, Whale Rock Wall): Full scene context showing lighting falloff into dark void, paint splatter puddles, and base contact line.
+* `04_cairn_sanctuary_crop.png` (900x550, Cairn Sanctuary): Hero circular crop showing central altar boulder, twin stacked stone cairns, perimeter ring, and moss garden.
+* `hub_cairn_sanctuary_ref.png` (840x540, Cairn Sanctuary): Framing showing radial floor cracks, cobblestone perimeter, and overhead spotlight cone.
+* `houdini_geo_capture_v001.png` (1920x1080, Diagnostic): Baseline Houdini viewport capture verifying coordinate space, grid orientation, and scale standards.
+
+## 3. Asset 01: Brutalist Chiseled Fountain (`Control_Brutalist_Fountain`)
+
+### A. Visual Role and Gameplay Function
+The brutalist fountain serves as an interactive puzzle or resting hub monument. Three heavy, quarry hewn vertical stone pillars sit inside a sunken rectangular basin. Water quietly wells up inside the hollow top cavities of the pillars, overflowing from the lowest front pillar through a carved weir notch and cascading down the face into the lower pool.
+
+### B. Proportions and Metric Dimensions (Jesse 1.75 m scale)
+* Basin footprint: 2.10 m (width, X) by 2.10 m (length, Z) by 0.38 m (outer height, Y).
+* Basin rim thickness: 0.22 m solid carved stone border around the perimeter.
+* Basin water cavity: 1.66 m by 1.66 m, depth 0.26 m.
+* Basin water level: Height 0.18 m, leaving 0.08 m to 0.10 m dry inner rim wall.
+* Pillar footprint: Square cross section 0.44 m by 0.44 m per pillar.
+* Pillar wall thickness: 0.075 m (7.5 cm) enclosing the hollow top water reservoir.
+* Pillar 1 (Tallest, Back Left): Height 1.18 m (reaches Jesse mid chest).
+* Pillar 2 (Medium, Front Right): Height 0.96 m (reaches Jesse waist).
+* Pillar 3 (Lowest, Front Left): Height 0.74 m (reaches Jesse hip).
+* Pour notch (Pillar 3): Width 0.065 m, depth 0.045 m, cut into the front lip facing positive Z.
+
+### C. Modular Components
+1. `basin_outer_frame`: Large monolithic carved square stone block.
+2. `basin_inner_reservoir`: Subtractive boolean cavity holding standing water.
+3. `pillar_cluster`: Three independent monolithic columns anchored into the basin floor.
+4. `top_water_pools`: Three rectangular planar water meshes inside pillar crowns.
+5. `basin_water_plane`: Main standing water surface in lower basin.
+6. `waterfall_mesh`: Vertical sheet geometry connecting Pillar 3 notch to the basin pool.
+
+### D. Surface Details, Cleavage Planes, and Materials
+* Material: `M_Control_BrutalistStone_01` (quarried dark basalt or slate).
+* Macro cleavage: Planar angular chisel cuts across edges, slope angles varying between 15 and 35 degrees.
+* Micro roughness: High frequency noise simulating quarried granite tooth, combined with horizontal strata lines.
+* Wetness mask: Dual zone scalar attribute (`f@wetness`):
+  * 1.0 (fully wet) on the waterfall descent strip, pillar pour lip, and submerged basin floor.
+  * 0.85 on interior reservoir walls.
+  * 0.05 to 0.15 on outer dry upright faces.
+
+### E. Houdini Procedural Modeling Specs
+* Node graph structure:
+  * `CONTROLS` (Null SOP): Exposes basin dimensions, pillar heights, chisel noise amplitude/frequency, and water flow speed.
+  * `box_basin_outer` + `box_basin_inner` connected to `bool_basin` (subtraction).
+  * `polybevel::3.0` on basin edges with 0.028 m offset and 2 subdivisions.
+  * Procedural helper generating `pillar_tall_back`, `pillar_med_right`, `pillar_low_front`.
+  * Pillar 3 booled with `box_notch` to create pour weir.
+  * `attribwrangle` (chisel noise): Displaces `@P` along `@N` using layered `anoise` masked by `@P.y > 0.02`.
+  * `attribwrangle` (wetness): Calculates distance to waterfall stream and basin water height, generating `@f@wetness` and darkening `@Cd`.
+  * Water surfaces: `grid` SOPs with vertex displacement in VEX driven by `@Time` and distance to impact center (-0.16, 0.18, 0.465).
+  * UV pipeline: `uvautoseam` to `uvflatten::3.0` to `uvlayout::3.0` packed into single UDIM.
+
+## 4. Asset 02: Glowing Fissure Monolith (`Control_Glowing_Monolith`)
+
+### A. Visual Role and Gameplay Function
+A towering supernatural megalith fractured down its center by an internal high energy anomaly. Blinding pure white resonance light pours through the irregular jagged chasm, casting a razor sharp beam across the floor. An interaction node sits at chest height within the crack.
+
+### B. Proportions and Metric Dimensions (Jesse 1.75 m scale)
+* Overall bounding dimensions: Width 1.70 m, Height 4.40 m (2.5x player height), Depth 1.30 m.
+* Footprint on floor: 1.70 m by 1.30 m.
+* Left sheared slab: Base width 0.95 m, tapering to 0.85 m at top.
+* Right sheared slab: Base width 0.75 m, widening to 0.85 m at top.
+* Central fissure gap:
+  * Base crack width: 0.08 m to 0.12 m.
+  * Upper diamond aperture: Widens to 0.38 m to 0.45 m at height 2.6 m to 3.5 m.
+  * Top gap: Narrows to 0.15 m at summit.
+* Floor light beam: Projected luminous corridor 0.12 m wide extending 3.5 m forward along the floor.
+* Spall debris field: Radial scatter of 45 to 60 rock chips extending 2.5 m around the base.
+
+### C. Modular Components
+1. `monolith_slab_left`: Primary western fractured pillar mass.
+2. `monolith_slab_right`: Opposing eastern fractured pillar mass.
+3. `fissure_aperture`: Negative space cutting path between the two slabs.
+4. `internal_emissive_core`: Interior vertical light emitter geometry.
+5. `floor_light_strip`: Decal or planar geo projecting the illuminated floor seam.
+6. `spall_debris_chunks`: Cluster of instanced fractured rock fragments scattered on the ground.
+
+### D. Surface Details and Lighting
+* Exterior stone: Deep charcoal quarried basalt with vertical stress fractures and chisel cleavage.
+* Interior fissure walls: High roughness crystalline rock faces catching intense grazing emissive light.
+* Emissive core: Ultra bright HDR white light source (`Emissive_Intensity > 50`), producing volumetric fog bleed and soft bloom.
+* Ground spall debris: Angular chips ranging from 0.03 m to 0.20 m in diameter.
+
+### E. Houdini Procedural Modeling Specs
+* Base geometry: Extruded rectangular prism (1.7 m by 4.4 m by 1.3 m).
+* Fracture generation:
+  * Generate cutting plane from a 3D curve with 6 to 8 control points defining the vertical lightning zigzag profile.
+  * Displace cutting plane with Voronoi and mountain noise to produce faceted rock cleavage faces.
+  * Boolean fracture splitting the base prism into left and right chunks.
+  * Separate chunks along horizontal vector (`X += 0.06` on right, `X -= 0.06` on left) to open the fissure.
+  * Secondary boolean diamond wedge cutter at Y=3.0 m to create the large upper aperture.
+* Edge weathering: `polybevel` with variable edge weight attribute based on curvature, followed by VDB convert and smooth pass.
+* Internal core: Low poly planar or cylindrical light card placed inside the fissure with emissive shader assignment.
+* Spall debris scatter:
+  * Scatter points on floor using radial falloff from fissure base.
+  * Instance procedurally fractured mini rocks with randomized scale (0.04 m to 0.18 m) and orientation.
+
+## 5. Asset 03: Whale Rock Wall (`Control_Whale_Rock_Wall`)
+
+### A. Visual Role and Gameplay Function
+A monumental natural slate quarry wall featuring a massive primitive or ritualistic chalk painting of a whale or sea leviathan. The whale's eye glows with a piercing interaction beacon. At the bottom left, a painter's rustic workbench and paint buckets indicate ongoing human ritual or study.
+
+### B. Proportions and Metric Dimensions (Jesse 1.75 m scale)
+* Overall wall dimensions: Length 7.00 m, Height 3.40 m at highest peak, Thickness 0.85 m at base tapering to 0.35 m at crest.
+* Crest profile: Asymmetric jagged ridge starting at 0.60 m on far right, ascending to 3.40 m at X=-1.8 m, then stepping down to 2.60 m on far left.
+* Whale mural bounds: Length 5.20 m, Height 1.80 m, centered on the main face.
+* Whale eye interaction beacon: Positioned at height 1.45 m from ground (Jesse eye line), 1.60 m from right edge.
+* Props footprint:
+  * Painter wooden stool: Width 0.55 m, Depth 0.40 m, Height 0.65 m.
+  * Paint buckets: Diameter 0.28 m, Height 0.34 m.
+  * Floor paint splatter zone: Spans 1.8 m by 1.2 m beneath the left half of the mural.
+
+### C. Modular Components
+1. `slate_megalith_body`: Huge sheared natural rock slab with diagonal geological foliation.
+2. `jagged_top_crest`: Fractured crest geometry with sharp rock peaks and spalls.
+3. `chalk_mural_layer`: Decal, vertex color, or secondary UV layer carrying the dry brush whale painting.
+4. `interactive_eye_node`: Glowing sphere / disc beacon seated inside the painted whale eye socket.
+5. `prop_painter_stool`: Wooden four legged rustic work bench.
+6. `prop_paint_buckets`: Two metal or plastic industrial buckets with dried white paint drips.
+7. `floor_paint_splatters`: Ground decals for spilled paint puddles.
+
+### D. Surface Details and Cleavage Planes
+* Slate foliation: Pronounced planar layering tilted at approximately 40 degrees angle running from upper right to lower left.
+* Dry brush chalk rendering: Paint catches exclusively on elevated micro crests of the rock surface, skipping recessed crevices.
+* Contrast: Dark slate stone (base reflectivity ~0.08) contrasted against chalk white wash (reflectivity ~0.75).
+
+### E. Houdini Procedural Modeling Specs
+* Base slab:
+  * Create 2D profile curve defining the bottom contact and top jagged mountain silhouette.
+  * Extrude profile along Z by 0.85 m with taper towards positive Y.
+  * Rotate coordinate space by 40 degrees to align anisotropic noise with geological slate foliation.
+  * Apply layered directional noise in VEX: high frequency stepped wave noise for laminar sheets plus cellular noise for rock chipping.
+* Chalk mural mapping:
+  * Project 2D texture mask of the whale illustration onto the rock face using orthographic UV projection.
+  * VEX wrangle: Modulate paint density with ambient occlusion and surface curvature. High curvature and peaks receive 100 percent paint, crevices receive 0 percent (simulating dry brush application).
+  * Write result into vertex color (`@Cd`) and scalar mask attribute (`f@chalk_mask`).
+* Prop generation:
+  * Parametric box and tube network generating wooden painter stool and buckets.
+  * Particle or curve based drip solver baking paint overflow runs down bucket sides.
+
+## 6. Asset 04: Stone Cairn Sanctuary (`Control_Cairn_Sanctuary`)
+
+### A. Visual Role and Gameplay Function
+A mystical oasis or shrine in the brutalist void. A circular island of living green alpine grass and golden lichen surrounding a natural altar slab, flanked by twin balancing stone cairns and a perimeter ring of river cobbles. A floating interaction reticle hovers above the central standing stone.
+
+### B. Proportions and Metric Dimensions (Jesse 1.75 m scale)
+* Sanctuary circular boundary: Diameter 3.00 m.
+* Central bedrock pedestal slab: Width 1.60 m, Depth 1.20 m, Height 0.25 m above floor level.
+* Central upright keystone: Height 1.20 m, Width 0.55 m, Depth 0.40 m. Natural rough hewn pointed standing stone.
+* Left Cairn (West Column):
+  * Height 1.05 m.
+  * Composition: 5 balancing stones.
+  * Top capstone: Flat mushroom shaped river stone, diameter 0.45 m, thickness 0.12 m.
+  * Lower stack: 4 rounded river cobbles decreasing in size from base to top.
+* Right Cairn (East Column):
+  * Height 1.10 m.
+  * Composition: 4 balancing stones.
+  * Top capstone: Angled oblong slab, length 0.50 m, width 0.28 m.
+  * Lower stack: 3 thick balancing river boulders.
+* Perimeter cobblestone ring: 16 smooth rounded river stones (diameters 0.15 m to 0.38 m) spaced around perimeter at radius 1.3 m to 1.5 m.
+* Grass and moss turf: Dense vegetation covering an area of 2.6 m diameter around the central rock.
+
+### C. Modular Components
+1. `bedrock_pedestal`: Flat, weathered foundational stone slab.
+2. `central_keystone`: Prominent vertical triangular standing monolith.
+3. `cairn_stack_left`: Five stone balancing column.
+4. `cairn_stack_right`: Four stone balancing column.
+5. `perimeter_cobble_ring`: Ring of 16 individual boundary stones.
+6. `grass_moss_scatter`: Clustered alpine grass tufts and moss surface patches.
+7. `ground_blend_disc`: Radial transition disc fading gravel and moss into the cracked concrete floor.
+
+### D. Surface Details and Vegetation
+* Rock types:
+  * Central keystone: Fractured dark granite with sharp vertical edges.
+  * Bedrock pedestal: Weathered limestone/sandstone covered in golden yellow and pale green crustose lichen.
+  * Cairns and perimeter stones: Smooth tumbled river cobbles with rounded silhouettes and subtle water worn pitting.
+* Vegetation:
+  * Vivid alpine turf, dense clumped moss, and slender green grass blades (length 0.08 m to 0.18 m).
+  * Contrasts dramatically with the sterile, pitch black brutalist surroundings.
+* Lighting:
+  * Direct overhead circular spotlight cone (radius 1.8 m) focused on the sanctuary, illuminating the rich colors of the moss and lichen.
+
+### E. Houdini Procedural Modeling Specs
+* Central keystone and pedestal:
+  * Procedural rock generator: Box SOP to Subdivide to Mountain noise with Voronoi cleavage to Erosion simulation or VDB smoothing.
+  * Lichen mask: Generated in VEX based on `@N.y > 0.55` and low ambient occlusion.
+* Cairn stacking solver:
+  * Procedural loop stacking randomized ellipsoids.
+  * Ray SOP or simple RBD bullet solver to settle each upper rock stably onto the contact points of the lower rock.
+  * Center of mass calculation in VEX to ensure balancing believability.
+* Perimeter ring placement:
+  * Scatter 16 points along circle curve with jittered radius (1.3 m to 1.5 m).
+  * Copy to points varied river rock geometry variants with randomized scale and rotation.
+* Foliage instancing:
+  * Scatter 1200 points on the ground disc within radius 1.4 m.
+  * Density map multiplied by distance falloff from center and avoided inside boulder intersections.
+  * Instance multi blade grass clump LODs with randomized `pscale` and `@up` normal variations.
+
+## 7. Verification and Unreal Engine 5 Pipeline Standards
+
+1. Texel Density: Standardized to 10.24 px/cm across all stone elements (2048x2048 texture covers 2m by 2m surface).
+2. Nanite Geometry: Stone meshes output at high polygon resolution (50k to 250k triangles per asset) for direct Nanite ingestion.
+3. Collision:
+   * Fountain: Complex collision for basin cavity and pillar tops to support water interaction.
+   * Monolith: Simplified convex hulls for left and right pillars, leaving fissure passable.
+   * Whale Wall: Single simplified convex hull or box collision.
+   * Cairn Sanctuary: Flat cylinder collision for base, individual capsules for standing stones.
+4. Unreal Material Mapping:
+   * Stone elements: `M_Control_BrutalistStone_01` (supports vertex wetness and detail normal).
+   * Water elements: `M_Control_FountainWater_01` (single layer water shading with ripple refraction).
+   * Lichen and Moss: Mask based blending using vertex color channels (Red=Moss, Green=Lichen, Blue=Wetness).
