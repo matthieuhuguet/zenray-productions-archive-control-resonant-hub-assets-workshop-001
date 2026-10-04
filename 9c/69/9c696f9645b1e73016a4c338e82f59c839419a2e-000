@@ -24,6 +24,13 @@ The reference folder contains raw screenshots, hero crops, and viewport diagnost
 * `04_cairn_sanctuary_crop.png` (900x550, Cairn Sanctuary): Hero circular crop showing central altar boulder, twin stacked stone cairns, perimeter ring, and moss garden.
 * `hub_cairn_sanctuary_ref.png` (840x540, Cairn Sanctuary): Framing showing radial floor cracks, cobblestone perimeter, and overhead spotlight cone.
 * `houdini_geo_capture_v001.png` (1920x1080, Diagnostic): Baseline Houdini viewport capture verifying coordinate space, grid orientation, and scale standards.
+* `sheets/Assets_Sheet.png` (3840x2160, 4K Contact Sheet): Proportional layout presentation sheet displaying all 4 environment assets with full-resolution crops, dark studio cards, and AnthropicMono typography. (4 October 2026)
+* `sheets/Assets_Sheet_2x2.png` (3840x2160, 4K Grid Sheet): Balanced 2x2 grid presentation sheet of the 4 assets. (4 October 2026)
+* `crops/Asset_1_Monolith.png` (1000x1640, Monolith): Native resolution hero crop showing full vertical rock height, internal light fracture, and floor beam. (4 October 2026)
+* `crops/Asset_2_Fountain.png` (970x880, Fountain): Native resolution crop of tiered stone fountain with zero HUD interference. (4 October 2026)
+* `crops/Asset_3_Painted_Slab.png` (1950x1300, Slate Wall): Wide crop encompassing the entire chalk whale drawing, painter desk, and slab profile. (4 October 2026)
+* `crops/Asset_4_Stone_Shrine.png` (800x700, Stone Shrine): Centered crop on central monolith, moss patch, twin cairns, and perimeter stones. (4 October 2026)
+* `raw/` : Complete set of 4 original 3840x2160 raw screenshots archived from Desktop. (4 October 2026)
 
 ## 3. Asset 01: Brutalist Chiseled Fountain (`Control_Brutalist_Fountain`)
 
